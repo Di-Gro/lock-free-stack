@@ -7,8 +7,7 @@ using namespace std;
 template<typename T>
 class LockFreeStack {
 private:
-    static const int USED_HEAD = 0;
-    static const int FREE_HEAD = 1;
+    enum class HeadId { Used = 0, Free = 1 };
 
     class Node {
     public:
@@ -34,7 +33,7 @@ private:
         int version = 0;
         Data* data = nullptr;
 
-        Node*& head(int head) { return data->heads[head]; }
+        Node*& head(HeadId headId) { return data->heads[(int)headId]; }
     };
 
     atomic<DataHeader> m_header;
@@ -53,12 +52,12 @@ public:
     }
 
     void Push(T value, int& version) {
-        Node* node = m_Pop(FREE_HEAD, version);
+        Node* node = m_Pop(HeadId::Free, version);
         if (node == nullptr)
             throw exception("Push() called on full stack");
 
         node->value = move(value);
-        m_Push(USED_HEAD, node, version);
+        m_Push(HeadId::Used, node, version);
     }
 
     void Push(T value) {
@@ -67,12 +66,12 @@ public:
     }
 
     T Pop(int& version) {
-        Node* node = m_Pop(USED_HEAD, version);
+        Node* node = m_Pop(HeadId::Used, version);
         if (node == nullptr)
             throw exception("Pop() called on empty stack");
 
         T value = move(node->value);
-        m_Push(FREE_HEAD, node, version);
+        m_Push(HeadId::Free, node, version);
         return value;
     }
 
@@ -83,7 +82,7 @@ public:
 
     bool IsEmpty() {
         DataHeader header = m_header.load(memory_order_relaxed);
-        return header.head(USED_HEAD) == nullptr;
+        return header.head(HeadId::Used) == nullptr;
     }
 
     void Clear(int& version) {
@@ -108,15 +107,15 @@ private:
         for (int i = 0; i < capacity - 1; i++)
             data.nodes[i].next = &data.nodes[i + 1];
 
-        data.heads[USED_HEAD] = nullptr;
-        data.heads[FREE_HEAD] = &data.nodes[0];
+        data.heads[(int)HeadId::Used] = nullptr;
+        data.heads[(int)HeadId::Free] = &data.nodes[0];
     }
 
     bool m_CompareHeader(atomic<DataHeader>& a, DataHeader& b, DataHeader& value) {
         return a.compare_exchange_weak(b, value, memory_order_acq_rel, memory_order_acquire);
     }
 
-    Node* m_Pop(int headId, int& version) {
+    Node* m_Pop(HeadId headId, int& version) {
         DataHeader last = m_header.load(memory_order_relaxed);
         DataHeader next;
         next.data = new Data(*last.data);
@@ -134,12 +133,12 @@ private:
         return last.head(headId);
     }
 
-    Node* m_Pop(int headId) {
+    Node* m_Pop(HeadId headId) {
         int v;
         return m_Pop(headId, v);
     }
 
-    void m_Push(int headId, Node* node, int& version) {
+    void m_Push(HeadId headId, Node* node, int& version) {
         DataHeader last = m_header.load(memory_order_relaxed);
         DataHeader next;
         next.data = new Data(*last.data);
@@ -153,7 +152,7 @@ private:
         delete last.data;
     }
 
-    void m_Push(int headId, Node* node) {
+    void m_Push(HeadId headId, Node* node) {
         int v;
         m_Push(node, headId, v);
     }
