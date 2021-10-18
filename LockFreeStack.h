@@ -55,7 +55,7 @@ public:
     void Push(T value, int& version) {
         Node* node = m_Pop(FREE_HEAD, version);
         if (node == nullptr)
-            return;
+            throw exception("Push() called on full stack");
 
         node->value = move(value);
         m_Push(USED_HEAD, node, version);
@@ -69,7 +69,7 @@ public:
     T Pop(int& version) {
         Node* node = m_Pop(USED_HEAD, version);
         if (node == nullptr)
-            return false;
+            throw exception("Pop() called on empty stack");
 
         T value = move(node->value);
         m_Push(FREE_HEAD, node, version);
